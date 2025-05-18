@@ -1,8 +1,6 @@
 .vs
-out
+build
 .~lock*
-save
 enc_temp_folder
 *.bkp
 *.tmp
-students.txt
