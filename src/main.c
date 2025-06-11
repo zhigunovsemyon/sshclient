@@ -9,6 +9,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Способ аутентификации
+enum AUTH_PW {
+	AUTH_PW_PASSWORD = 0b001,
+	AUTH_PW_KEYBOARD_INTERACTIVE = 0b010,
+	AUTH_PW_PUBLICKEY = 0b100
+};
+
 static char const * pubkey = ".ssh/id_rsa.pub";
 static char const * privkey = ".ssh/id_rsa";
 static char const * username = "username";
@@ -132,34 +139,37 @@ int main(int argc, char * argv[])
 
 	/* check what authentication methods are available */
 	userauthlist = libssh2_userauth_list(session, username,
+					     (uint32_t)strlen(username));
 
-					     (unsigned int)strlen(username));
 	if (userauthlist) {
 		fprintf(stderr, "Authentication methods: %s\n", userauthlist);
 		if (strstr(userauthlist, "password")) {
-			auth_pw |= 1;
+			auth_pw |= AUTH_PW_PASSWORD;
 		}
 		if (strstr(userauthlist, "keyboard-interactive")) {
-			auth_pw |= 2;
+			auth_pw |= AUTH_PW_KEYBOARD_INTERACTIVE;
 		}
 		if (strstr(userauthlist, "publickey")) {
-			auth_pw |= 4;
+			auth_pw |= AUTH_PW_PUBLICKEY;
 		}
 
 		/* check for options */
 		if (argc > 4) {
-			if ((auth_pw & 1) && !strcmp(argv[4], "-p")) {
-				auth_pw = 1;
+			if ((auth_pw & AUTH_PW_PASSWORD) &&
+			    !strcmp(argv[4], "-p")) {
+				auth_pw = AUTH_PW_PASSWORD;
 			}
-			if ((auth_pw & 2) && !strcmp(argv[4], "-i")) {
-				auth_pw = 2;
+			if ((auth_pw & AUTH_PW_KEYBOARD_INTERACTIVE) &&
+			    !strcmp(argv[4], "-i")) {
+				auth_pw = AUTH_PW_KEYBOARD_INTERACTIVE;
 			}
-			if ((auth_pw & 4) && !strcmp(argv[4], "-k")) {
-				auth_pw = 4;
+			if ((auth_pw & AUTH_PW_PUBLICKEY) &&
+			    !strcmp(argv[4], "-k")) {
+				auth_pw = AUTH_PW_PUBLICKEY;
 			}
 		}
 
-		if (auth_pw & 1) {
+		if (auth_pw & AUTH_PW_PASSWORD) {
 			/* We could authenticate via password */
 			if (libssh2_userauth_password(session, username,
 						      password)) {
@@ -171,12 +181,10 @@ int main(int argc, char * argv[])
 				fprintf(stderr, "Authentication by password "
 						"succeeded.\n");
 			}
-		} else if (auth_pw & 2) {
+		} else if (auth_pw & AUTH_PW_KEYBOARD_INTERACTIVE) {
 			/* Or via keyboard-interactive */
 			if (libssh2_userauth_keyboard_interactive(
-				    session, username,
-
-				    &kbd_callback)) {
+				    session, username, &kbd_callback)) {
 				fprintf(stderr,
 					"Authentication by "
 					"keyboard-interactive failed.\n");
@@ -186,13 +194,15 @@ int main(int argc, char * argv[])
 					"Authentication by "
 					"keyboard-interactive succeeded.\n");
 			}
-		} else if (auth_pw & 4) {
+		} else if (auth_pw & AUTH_PW_PUBLICKEY) {
 			/* Or by public key */
 			size_t fn1sz, fn2sz;
 			char *fn1, *fn2;
+
 			char const * h = getenv("HOME");
 			if (!h || !*h)
 				h = ".";
+
 			fn1sz = strlen(h) + strlen(pubkey) + 2;
 			fn2sz = strlen(h) + strlen(privkey) + 2;
 			fn1 = malloc(fn1sz);
@@ -203,23 +213,14 @@ int main(int argc, char * argv[])
 				fprintf(stderr, "out of memory\n");
 				goto shutdown;
 			}
-			/* Avoid false positives */
-#if defined(__GNUC__) && __GNUC__ >= 7
-#pragma GCC diagnostic push
-#pragma GCC diagnostic warning "-Wformat-truncation=1"
-#endif
+
 			/* Using asprintf() here would be much cleaner,
 			   but less portable */
 			snprintf(fn1, fn1sz, "%s/%s", h, pubkey);
 			snprintf(fn2, fn2sz, "%s/%s", h, privkey);
-#if defined(__GNUC__) && __GNUC__ >= 7
-#pragma GCC diagnostic pop
-#endif
 
 			if (libssh2_userauth_publickey_fromfile(
-				    session, username,
-
-				    fn1, fn2, password)) {
+				    session, username, fn1, fn2, password)) {
 				fprintf(stderr, "Authentication by public key "
 						"failed.\n");
 				free(fn2);
@@ -256,7 +257,6 @@ int main(int argc, char * argv[])
 	 * an interactive shell.
 	 */
 	if (libssh2_channel_request_pty(channel, "vanilla")) {
-
 		fprintf(stderr, "Failed requesting pty\n");
 	}
 
@@ -321,7 +321,6 @@ int main(int argc, char * argv[])
 	rc = libssh2_channel_get_exit_status(channel);
 
 	if (libssh2_channel_close(channel))
-
 		fprintf(stderr, "Unable to close channel\n");
 
 	if (channel) {
@@ -337,7 +336,6 @@ int main(int argc, char * argv[])
 	 */
 
 shutdown:
-
 	if (session) {
 		libssh2_session_disconnect(session, "Normal Shutdown");
 
