@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <libssh2.h>
 
 #include <arpa/inet.h>
@@ -214,8 +215,6 @@ int main(int argc, char * argv[])
 				goto shutdown;
 			}
 
-			/* Using asprintf() here would be much cleaner,
-			   but less portable */
 			snprintf(fn1, fn1sz, "%s/%s", h, pubkey);
 			snprintf(fn2, fn2sz, "%s/%s", h, privkey);
 
@@ -315,6 +314,10 @@ int main(int argc, char * argv[])
 			else {
 				fwrite(buf, 1, (size_t)err, stdout);
 			}
+
+			// assert(0 <=libssh2_channel_write(channel, "ls\n", strlen("ls\n")));
+			// sleep(4);
+
 		}
 	}
 
