@@ -26,6 +26,8 @@ static char const * privkey = ".ssh/id_rsa";
 static char const * username = "username";
 static char const * password = "password";
 
+void usage(char const * prog_path);
+
 int communication_cycle(LIBSSH2_CHANNEL *);
 
 int set_auth_way(char const * key, char const * userauthlist);
@@ -47,7 +49,7 @@ kbd_callback([[maybe_unused]] char const * name,
 	responses[0].length = (unsigned int)strlen(password);
 }
 
-int main(int argc, char * argv[])
+int main(int argc, char const * argv[])
 {
 	uint32_t hostaddr;
 	libssh2_socket_t sock;
@@ -58,6 +60,11 @@ int main(int argc, char * argv[])
 	int rc;
 	LIBSSH2_SESSION * session = NULL;
 	LIBSSH2_CHANNEL * channel;
+
+	if (argc < 2) {
+		usage(*argv);
+		return 0;
+	}
 
 #ifdef _WIN32
 	WSADATA wsadata;
@@ -287,6 +294,19 @@ shutdown:
 	WSACleanup();
 #endif
 	return rc;
+}
+
+void usage(char const * prog_path)
+{
+	fprintf(stderr,
+		"Использование программы:\n"
+		"%s ip логин пароль способ_аутентификации команда\n"
+		"Возможные ключи:\n"
+		"\t%s -- по паролю\n"
+		"\t%s -- по публичному ключу\n"
+		"\t%s -- интерактивный ввод\n", //
+		prog_path, AUTH_PASSWORD_KEY, AUTH_PUBLICKEY_KEY,
+		AUTH_INTERACTIVE_KEY);
 }
 
 int communication_cycle(LIBSSH2_CHANNEL * channel)
