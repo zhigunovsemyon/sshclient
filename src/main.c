@@ -17,12 +17,18 @@ enum AUTH_PW {
 	AUTH_PW_PUBLICKEY = 0b100
 };
 
+static char const * AUTH_PASSWORD_KEY = "-p";
+static char const * AUTH_PUBLICKEY_KEY = "-k";
+static char const * AUTH_INTERACTIVE_KEY = "-i";
+
 static char const * pubkey = ".ssh/id_rsa.pub";
 static char const * privkey = ".ssh/id_rsa";
 static char const * username = "username";
 static char const * password = "password";
 
 int communication_cycle(LIBSSH2_CHANNEL *);
+
+int set_auth_way(char const * key, char const * userauthlist);
 
 static void
 kbd_callback([[maybe_unused]] char const * name,
@@ -45,7 +51,7 @@ int main(int argc, char * argv[])
 {
 	uint32_t hostaddr;
 	libssh2_socket_t sock;
-	int i, auth_pw = 0;
+	int i;
 	struct sockaddr_in sin;
 	char const * fingerprint;
 	char * userauthlist;
@@ -146,45 +152,12 @@ int main(int argc, char * argv[])
 
 	if (userauthlist) {
 		fprintf(stderr, "Authentication methods: %s\n", userauthlist);
-		if (strstr(userauthlist, "password")) {
-			auth_pw |= AUTH_PW_PASSWORD;
-		}
-		if (strstr(userauthlist, "keyboard-interactive")) {
-			auth_pw |= AUTH_PW_KEYBOARD_INTERACTIVE;
-		}
-		if (strstr(userauthlist, "publickey")) {
-			auth_pw |= AUTH_PW_PUBLICKEY;
-		}
 
 		/* check for options */
-		if (argc > 4) {
-			if ((auth_pw & AUTH_PW_PASSWORD) &&
-			    !strcmp(argv[4], "-p")) {
-				auth_pw = AUTH_PW_PASSWORD;
-			}
-			if ((auth_pw & AUTH_PW_KEYBOARD_INTERACTIVE) &&
-			    !strcmp(argv[4], "-i")) {
-				auth_pw = AUTH_PW_KEYBOARD_INTERACTIVE;
-			}
-			if ((auth_pw & AUTH_PW_PUBLICKEY) &&
-			    !strcmp(argv[4], "-k")) {
-				auth_pw = AUTH_PW_PUBLICKEY;
-			}
-		}
+		char const * auth_way_key = (argc > 4) ? argv[4] : nullptr;
+		int auth_pw = set_auth_way(auth_way_key, userauthlist);
 
-		if (auth_pw & AUTH_PW_PASSWORD) {
-			/* We could authenticate via password */
-			if (libssh2_userauth_password(session, username,
-						      password)) {
-
-				fprintf(stderr,
-					"Authentication by password failed.\n");
-				goto shutdown;
-			} else {
-				fprintf(stderr, "Authentication by password "
-						"succeeded.\n");
-			}
-		} else if (auth_pw & AUTH_PW_KEYBOARD_INTERACTIVE) {
+		if (auth_pw & AUTH_PW_KEYBOARD_INTERACTIVE) {
 			/* Or via keyboard-interactive */
 			if (libssh2_userauth_keyboard_interactive(
 				    session, username, &kbd_callback)) {
@@ -196,6 +169,18 @@ int main(int argc, char * argv[])
 				fprintf(stderr,
 					"Authentication by "
 					"keyboard-interactive succeeded.\n");
+			}
+		} else if (auth_pw & AUTH_PW_PASSWORD) {
+			/* We could authenticate via password */
+			if (libssh2_userauth_password(session, username,
+						      password)) {
+
+				fprintf(stderr,
+					"Authentication by password failed.\n");
+				goto shutdown;
+			} else {
+				fprintf(stderr, "Authentication by password "
+						"succeeded.\n");
 			}
 		} else if (auth_pw & AUTH_PW_PUBLICKEY) {
 			/* Or by public key */
@@ -366,4 +351,40 @@ int communication_cycle(LIBSSH2_CHANNEL * channel)
 		// sleep(4);
 	}
 	return 0;
+}
+
+int set_auth_ways(char const * userauthlist)
+{
+	int auth_pw = 0;
+	if (strstr(userauthlist, "password")) {
+		auth_pw |= AUTH_PW_PASSWORD;
+	}
+	if (strstr(userauthlist, "keyboard-interactive")) {
+		auth_pw |= AUTH_PW_KEYBOARD_INTERACTIVE;
+	}
+	if (strstr(userauthlist, "publickey")) {
+		auth_pw |= AUTH_PW_PUBLICKEY;
+	}
+	return auth_pw;
+}
+
+int set_auth_way(char const * key, char const * userauthlist)
+{
+	int auth_pw = set_auth_ways(userauthlist);
+	if (key == nullptr)
+		goto keep;
+
+	if ((auth_pw & AUTH_PW_PASSWORD) && !strcmp(key, AUTH_PASSWORD_KEY)) {
+		return AUTH_PW_PASSWORD;
+	}
+	if ((auth_pw & AUTH_PW_KEYBOARD_INTERACTIVE) &&
+	    !strcmp(key, AUTH_INTERACTIVE_KEY)) {
+		return AUTH_PW_KEYBOARD_INTERACTIVE;
+	}
+	if ((auth_pw & AUTH_PW_PUBLICKEY) && !strcmp(key, AUTH_PUBLICKEY_KEY)) {
+		return AUTH_PW_PUBLICKEY;
+	}
+keep:
+	// Оставить как есть, несколько способов
+	return auth_pw;
 }
