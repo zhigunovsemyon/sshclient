@@ -309,15 +309,19 @@ int main(int argc, char * argv[])
 
 			if (err < 0)
 				fprintf(stderr,
-					"Unable to read response: %ld\n",
-					(long)err);
+					"Unable to read response: %ld\n", err);
 			else {
 				fwrite(buf, 1, (size_t)err, stdout);
 			}
 
-			// assert(0 <=libssh2_channel_write(channel, "ls\n", strlen("ls\n")));
-			// sleep(4);
+			char const * response = "\x04";
+			err = libssh2_channel_write(channel, response,
+						    strlen(response));
 
+			if (err < 0)
+				fprintf(stderr,
+					"Unable to write response: %ld\n", err);
+			// sleep(4);
 		}
 	}
 
@@ -341,7 +345,6 @@ int main(int argc, char * argv[])
 shutdown:
 	if (session) {
 		libssh2_session_disconnect(session, "Normal Shutdown");
-
 		libssh2_session_free(session);
 	}
 
@@ -351,12 +354,10 @@ shutdown:
 	}
 
 	fprintf(stderr, "all done\n");
-
 	libssh2_exit();
 
-#ifdef _WIN32
+#ifdef _WIN32 // in shutdown
 	WSACleanup();
 #endif
-
 	return rc;
 }
