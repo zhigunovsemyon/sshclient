@@ -27,6 +27,7 @@ static char const * username = "username";
 static char const * password = "password";
 
 void usage(char const * prog_path);
+void print_fingerprint(FILE *, char const * fingerprint);
 
 int communication_cycle(LIBSSH2_CHANNEL *);
 
@@ -53,9 +54,7 @@ int main(int argc, char const * argv[])
 {
 	uint32_t hostaddr;
 	libssh2_socket_t sock;
-	int i;
 	struct sockaddr_in sin;
-	char const * fingerprint;
 	char * userauthlist;
 	int rc;
 	LIBSSH2_SESSION * session = NULL;
@@ -145,13 +144,9 @@ int main(int argc, char const * argv[])
 	 * may have it hard coded, may go to a file, may present it to the
 	 * user, that's your call
 	 */
+	char const * fingerprint;
 	fingerprint = libssh2_hostkey_hash(session, LIBSSH2_HOSTKEY_HASH_SHA1);
-
-	fprintf(stderr, "Fingerprint: ");
-	for (i = 0; i < 20; i++) {
-		fprintf(stderr, "%02X ", (unsigned char)fingerprint[i]);
-	}
-	fprintf(stderr, "\n");
+	print_fingerprint(stderr, fingerprint);
 
 	/* check what authentication methods are available */
 	userauthlist = libssh2_userauth_list(session, username,
@@ -296,6 +291,13 @@ shutdown:
 	return rc;
 }
 
+void print_fingerprint(FILE * stream, char const * fingerprint){
+	fprintf(stream, "Fingerprint: ");
+	for (int i = 0; i < 20; i++) {
+		fprintf(stream, "%02X ", (unsigned char)fingerprint[i]);
+	}
+	fprintf(stream, "\n");
+}
 void usage(char const * prog_path)
 {
 	fprintf(stderr,
