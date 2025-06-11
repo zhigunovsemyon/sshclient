@@ -55,10 +55,8 @@ int main(int argc, char const * argv[])
 	uint32_t hostaddr;
 	libssh2_socket_t sock;
 	struct sockaddr_in sin;
-	char * userauthlist;
 	int rc;
 	LIBSSH2_SESSION * session = NULL;
-	LIBSSH2_CHANNEL * channel;
 
 	if (argc < 2) {
 		usage(*argv);
@@ -149,8 +147,8 @@ int main(int argc, char const * argv[])
 	print_fingerprint(stderr, fingerprint);
 
 	/* check what authentication methods are available */
-	userauthlist = libssh2_userauth_list(session, username,
-					     (uint32_t)strlen(username));
+	char * userauthlist = libssh2_userauth_list(session, username,
+						    (uint32_t)strlen(username));
 
 	if (userauthlist) {
 		fprintf(stderr, "Authentication methods: %s\n", userauthlist);
@@ -228,8 +226,8 @@ int main(int argc, char const * argv[])
 	}
 
 	/* Request a session channel on which to run a shell */
+	LIBSSH2_CHANNEL * channel;
 	channel = libssh2_channel_open_session(session);
-
 	if (!channel) {
 		fprintf(stderr, "Unable to open a session\n");
 		goto shutdown;
@@ -291,13 +289,15 @@ shutdown:
 	return rc;
 }
 
-void print_fingerprint(FILE * stream, char const * fingerprint){
+void print_fingerprint(FILE * stream, char const * fingerprint)
+{
 	fprintf(stream, "Fingerprint: ");
 	for (int i = 0; i < 20; i++) {
 		fprintf(stream, "%02X ", (unsigned char)fingerprint[i]);
 	}
 	fprintf(stream, "\n");
 }
+
 void usage(char const * prog_path)
 {
 	fprintf(stderr,
