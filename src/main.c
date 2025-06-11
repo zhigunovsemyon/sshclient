@@ -22,6 +22,8 @@ static char const * privkey = ".ssh/id_rsa";
 static char const * username = "username";
 static char const * password = "password";
 
+int communication_cycle(LIBSSH2_CHANNEL *);
+
 static void
 kbd_callback([[maybe_unused]] char const * name,
 	     [[maybe_unused]] int name_len,
@@ -260,69 +262,9 @@ int main(int argc, char * argv[])
 	}
 
 	if (argc > 5) {
-		// if (libssh2_channel_exec(channel, argv[5])) {
-		//
-		// 	fprintf(stderr,
-		// 		"Unable to request command on channel\n");
-		// 	goto shutdown;
-		// }
-
-		/* Instead of just running a single command with
-		 * libssh2_channel_exec, a shell can be opened on the channel
-		 * instead, for interactive use. You usually want a pty
-		 * allocated first in that case (see above). */
-		if (libssh2_channel_shell(channel)) {
-
-			fprintf(stderr,
-				"Unable to request shell on allocated pty\n");
+		rc = communication_cycle(channel);
+		if (rc)
 			goto shutdown;
-		}
-
-		/* At this point the shell can be interacted with using
-		 * libssh2_channel_read()
-		 * libssh2_channel_read_stderr()
-		 * libssh2_channel_write()
-		 * libssh2_channel_write_stderr()
-		 *
-		 * Blocking mode may be (en|dis)abled with:
-		 *    libssh2_channel_set_blocking()
-		 * If the server send EOF, libssh2_channel_eof() will return
-		 * non-0 To send EOF to the server use:
-		 * libssh2_channel_send_eof() A channel can be closed with:
-		 * libssh2_channel_close() A channel can be freed with:
-		 * libssh2_channel_free()
-		 */
-
-		/* Read and display all the data received on stdout (ignoring
-		 * stderr) until the channel closes. This will eventually block
-		 * if the command produces too much data on stderr; the loop
-		 * must be rewritten to use non-blocking mode and include
-		 * interspersed calls to libssh2_channel_read_stderr() to avoid
-		 * this. See ssh2_echo.c for an idea of how such a loop might
-		 * look.
-		 */
-		while (!libssh2_channel_eof(channel)) {
-
-			char buf[1024];
-			ssize_t err =
-				libssh2_channel_read(channel, buf, sizeof(buf));
-
-			if (err < 0)
-				fprintf(stderr,
-					"Unable to read response: %ld\n", err);
-			else {
-				fwrite(buf, 1, (size_t)err, stdout);
-			}
-
-			char const * response = "\x04";
-			err = libssh2_channel_write(channel, response,
-						    strlen(response));
-
-			if (err < 0)
-				fprintf(stderr,
-					"Unable to write response: %ld\n", err);
-			// sleep(4);
-		}
 	}
 
 	rc = libssh2_channel_get_exit_status(channel);
@@ -360,4 +302,68 @@ shutdown:
 	WSACleanup();
 #endif
 	return rc;
+}
+
+int communication_cycle(LIBSSH2_CHANNEL * channel)
+{
+	// if (libssh2_channel_exec(channel, argv[5])) {
+	//
+	// 	fprintf(stderr,
+	// 		"Unable to request command on channel\n");
+	// 	goto shutdown;
+	// }
+
+	/* Instead of just running a single command with
+	 * libssh2_channel_exec, a shell can be opened on the channel
+	 * instead, for interactive use. You usually want a pty
+	 * allocated first in that case (see above). */
+	if (libssh2_channel_shell(channel)) {
+
+		fprintf(stderr, "Unable to request shell on allocated pty\n");
+		return -1;
+	}
+
+	/* At this point the shell can be interacted with using
+	 * libssh2_channel_read()
+	 * libssh2_channel_read_stderr()
+	 * libssh2_channel_write()
+	 * libssh2_channel_write_stderr()
+	 *
+	 * Blocking mode may be (en|dis)abled with:
+	 *    libssh2_channel_set_blocking()
+	 * If the server send EOF, libssh2_channel_eof() will return
+	 * non-0 To send EOF to the server use:
+	 * libssh2_channel_send_eof() A channel can be closed with:
+	 * libssh2_channel_close() A channel can be freed with:
+	 * libssh2_channel_free()
+	 */
+
+	/* Read and display all the data received on stdout (ignoring
+	 * stderr) until the channel closes. This will eventually block
+	 * if the command produces too much data on stderr; the loop
+	 * must be rewritten to use non-blocking mode and include
+	 * interspersed calls to libssh2_channel_read_stderr() to avoid
+	 * this. See ssh2_echo.c for an idea of how such a loop might
+	 * look.
+	 */
+	while (!libssh2_channel_eof(channel)) {
+
+		char buf[1024];
+		ssize_t err = libssh2_channel_read(channel, buf, sizeof(buf));
+
+		if (err < 0)
+			fprintf(stderr, "Unable to read response: %ld\n", err);
+		else {
+			fwrite(buf, 1, (size_t)err, stdout);
+		}
+
+		char const * response = "\x04";
+		err = libssh2_channel_write(channel, response,
+					    strlen(response));
+
+		if (err < 0)
+			fprintf(stderr, "Unable to write response: %ld\n", err);
+		// sleep(4);
+	}
+	return 0;
 }
