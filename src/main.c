@@ -93,27 +93,24 @@ int main(int argc, char const * argv[])
 		goto shutdown;
 	}
 
-	fprintf(stderr, "Connecting to %s:%d as user %s\n",
-		inet_ntoa(sin.sin_addr), ntohs(sin.sin_port), username);
+	fprintf(stderr, "Подключение к %s@%s:%d\n", username,
+		inet_ntoa(sin.sin_addr), ntohs(sin.sin_port));
 
 	if (connect(sock, (struct sockaddr *)(&sin),
 		    sizeof(struct sockaddr_in))) {
-		fprintf(stderr, "failed to connect.\n");
+		fprintf(stderr, "Не удалось подключиться!\n");
 		goto shutdown;
 	}
 
-	/* Create a session instance and start it up. This will trade welcome
-	 * banners, exchange keys, and setup crypto, compression, and MAC layers
-	 */
 	session = libssh2_session_init();
 	if (!session) {
-		fprintf(stderr, "Could not initialize SSH session.\n");
+		fprintf(stderr, "Не удалось инициировать SSH сессию\n");
 		goto shutdown;
 	}
 
 	rc = libssh2_session_handshake(session, sock);
 	if (rc) {
-		fprintf(stderr, "Failure establishing SSH session: %d\n", rc);
+		fprintf(stderr, "Не удалось установить SSH сессию: %d\n", rc);
 		goto shutdown;
 	}
 
@@ -121,11 +118,10 @@ int main(int argc, char const * argv[])
 	if (rc)
 		goto shutdown;
 
-	/* Request a session channel on which to run a shell */
 	LIBSSH2_CHANNEL * channel;
 	channel = libssh2_channel_open_session(session);
 	if (!channel) {
-		fprintf(stderr, "Unable to open a session\n");
+		fprintf(stderr, "Не удалось открыть канал\n");
 		goto shutdown;
 	}
 
@@ -137,6 +133,7 @@ int main(int argc, char const * argv[])
 		fprintf(stderr, "Failed requesting pty\n");
 	}
 
+	// Непосредственно взаимодействие с сервером
 	int cmds_start = get_communication_type(argc, argv);
 	if (cmds_start == -1) {
 		rc = communication_cycle(channel);
@@ -151,7 +148,7 @@ int main(int argc, char const * argv[])
 	rc = libssh2_channel_get_exit_status(channel);
 
 	if (libssh2_channel_close(channel))
-		fprintf(stderr, "Unable to close channel\n");
+		fprintf(stderr, "Ошибка при закрытии канала\n");
 
 	if (channel) {
 		libssh2_channel_free(channel);
@@ -238,7 +235,8 @@ int communication_cycle(LIBSSH2_CHANNEL * channel)
 			libssh2_channel_read(channel, r_buf, r_buf_size);
 
 		if (read_count < 0)
-			fprintf(stderr, "Unable to read response: %ld\n", read_count);
+			fprintf(stderr, "Unable to read response: %ld\n",
+				read_count);
 		else {
 			fwrite(r_buf, 1, (size_t)read_count, stdout);
 		}
@@ -253,10 +251,12 @@ int communication_cycle(LIBSSH2_CHANNEL * channel)
 			break;
 		}
 
-		read_count = libssh2_channel_write(channel, w_buf, strlen(w_buf));
+		read_count =
+			libssh2_channel_write(channel, w_buf, strlen(w_buf));
 
 		if (read_count < 0)
-			fprintf(stderr, "Unable to write w_buf: %ld\n", read_count);
+			fprintf(stderr, "Unable to write w_buf: %ld\n",
+				read_count);
 	}
 
 	return 0;
@@ -310,16 +310,14 @@ int authentication(LIBSSH2_SESSION * session,
 		   int prog_argc,
 		   char const ** prog_argv)
 {
-	/* check what authentication methods are available */
+	/* Ответ сервера со способами аутентификации*/
 	char * userauthlist = libssh2_userauth_list(session, username,
 						    (uint32_t)strlen(username));
 	if (!userauthlist)
 		return 0;
+	// Далее список есть
 
-	// if userauthlist
-	fprintf(stderr, "Authentication methods: %s\n", userauthlist);
-
-	/* check for options */
+	// Установка флагов на основе списка выше и ключей программы
 	int auth_pw = set_auth_way(prog_argc, prog_argv, userauthlist);
 
 	if (auth_pw & AUTH_PW_KEYBOARD_INTERACTIVE) {
@@ -327,65 +325,59 @@ int authentication(LIBSSH2_SESSION * session,
 		g_password = get_password(prog_argc, prog_argv);
 		if (!g_password)
 			g_password = getpass("Пароль: ");
-		/* Or via keyboard-interactive */
+
 		if (libssh2_userauth_keyboard_interactive(session, username,
 							  &kbd_callback)) {
-			fprintf(stderr, "Authentication by "
-					"keyboard-interactive failed.\n");
+			fprintf(stderr, "Авторизация посредством "
+					"keyboard-interactive не удалась.\n");
 			return -1;
 		} else {
-			fprintf(stderr, "Authentication by "
-					"keyboard-interactive succeeded.\n");
+			fprintf(stderr, "Авторизация прошла успешно\n");
 		}
 	} else if (auth_pw & AUTH_PW_PASSWORD) {
 		char const * passwd = get_password(prog_argc, prog_argv);
 		if (!passwd) {
-			fprintf(stderr, "Invalid password!\n");
+			fprintf(stderr, "Неправильный пароль!\n");
 			return -1;
 		}
 		if (libssh2_userauth_password(session, username, passwd)) {
-
-			fprintf(stderr, "Authentication by password failed.\n");
+			fprintf(stderr, "Неправильный пароль!\n");
 			return -1;
 		} else {
-			fprintf(stderr, "Authentication by password "
-					"succeeded.\n");
+			fprintf(stderr, "Авторизация прошла успешно\n");
 		}
 	} else if (auth_pw & AUTH_PW_PUBLICKEY) {
-		/* Or by public key */
-		size_t fn1sz, fn2sz;
-		char *fn1, *fn2;
-
+		// Домашний каталог, либо текущий
 		char const * h = getenv("HOME");
 		if (!h || !*h)
 			h = ".";
 
-		fn1sz = strlen(h) + strlen(pubkey) + 2;
-		fn2sz = strlen(h) + strlen(privkey) + 2;
-		fn1 = malloc(fn1sz + fn2sz);
+		size_t fn1sz = strlen(h) + strlen(pubkey) + 2;
+		size_t fn2sz = strlen(h) + strlen(privkey) + 2;
+
+		char * fn1 = malloc(fn1sz + fn2sz);
 		if (!fn1) {
 			free(fn1);
 			fprintf(stderr, "out of memory\n");
 			return -1;
 		}
-		fn2 = fn1 + fn1sz;
+		char * fn2 = fn1 + fn1sz;
 
 		snprintf(fn1, fn1sz, "%s/%s", h, pubkey);
 		snprintf(fn2, fn2sz, "%s/%s", h, privkey);
 
 		if (libssh2_userauth_publickey_fromfile(session, username, fn1,
 							fn2, nullptr)) {
-			fprintf(stderr, "Authentication by public key "
-					"failed.\n");
+			fprintf(stderr,
+				"Авторизация по publickey не удалась\n");
 			free(fn1);
 			return -1;
 		} else {
-			fprintf(stderr, "Authentication by public key "
-					"succeeded.\n");
+			fprintf(stderr, "Авторизация прошла успешно\n");
 		}
 		free(fn1);
 	} else {
-		fprintf(stderr, "No supported authentication methods found.\n");
+		fprintf(stderr, "Нет подходящего способа авторизации.\n");
 		return -1;
 	}
 	return 0;
@@ -529,7 +521,6 @@ int communication_single_command(LIBSSH2_CHANNEL * channel,
 
 		if (err < 0)
 			fprintf(stderr, "Unable to write response: %ld\n", err);
-		// sleep(4);
 	}
 
 	free(cmd);
