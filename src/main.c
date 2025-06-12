@@ -3,6 +3,8 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -17,6 +19,8 @@ enum AUTH_PW {
 	AUTH_PW_PUBLICKEY = 0b100
 };
 
+static in_port_t const DEFAULT_PORT = 22;
+
 static char const * AUTH_PASSWORD_KEY = "-p";
 static char const * AUTH_PUBLICKEY_KEY = "-k";
 static char const * AUTH_INTERACTIVE_KEY = "-i";
@@ -30,6 +34,10 @@ void usage(char const * prog_path);
 void print_fingerprint(FILE *, char const * fingerprint);
 
 int communication_cycle(LIBSSH2_CHANNEL *);
+
+int set_destination(struct sockaddr_in * addr_to_set,
+		    int prog_argc,
+		    char const ** prog_argv);
 
 int authentication(LIBSSH2_SESSION * session,
 		   char const * username,
@@ -56,7 +64,7 @@ kbd_callback([[maybe_unused]] char const * name,
 
 int main(int argc, char const * argv[])
 {
-	uint32_t hostaddr;
+	// uint32_t hostaddr;
 	libssh2_socket_t sock;
 	struct sockaddr_in sin;
 	int rc;
@@ -77,11 +85,18 @@ int main(int argc, char const * argv[])
 	}
 #endif
 
-	if (argc > 1) {
-		hostaddr = inet_addr(argv[1]);
-	} else {
-		hostaddr = htonl(0x7F000001);
+	// if (argc > 1) {
+	// 	hostaddr = inet_addr(argv[1]);
+	// } else {
+	// 	hostaddr = htonl(0x7F000001);
+	// }
+	rc = set_destination(&sin, argc, argv);
+	if (rc) {
+		fprintf(stderr, "Invalid IP address!\n");
+		sock = LIBSSH2_INVALID_SOCKET;
+		goto shutdown;
 	}
+
 	if (argc > 2) {
 		username = argv[2];
 	}
@@ -106,9 +121,9 @@ int main(int argc, char const * argv[])
 		goto shutdown;
 	}
 
-	sin.sin_family = AF_INET;
-	sin.sin_port = htons(2022);
-	sin.sin_addr.s_addr = hostaddr;
+	// sin.sin_family = AF_INET;
+	// sin.sin_port = htons(2022);
+	// sin.sin_addr.s_addr = hostaddr;
 
 	fprintf(stderr, "Connecting to %s:%d as user %s\n",
 		inet_ntoa(sin.sin_addr), ntohs(sin.sin_port), username);
@@ -420,6 +435,55 @@ int authentication(LIBSSH2_SESSION * session,
 	} else {
 		fprintf(stderr, "No supported authentication methods found.\n");
 		return -1;
+	}
+	return 0;
+}
+
+int set_destination(struct sockaddr_in * addr_to_set,
+		    int prog_argc,
+		    char const ** prog_argv)
+{
+	char ip_str_buf[16] = {};
+	char const * non_key_param = nullptr;
+	for (int i = 1; i < prog_argc; ++i) {
+		char const * cur_param = prog_argv[i];
+		if (cur_param[0] == '-')
+			continue;
+
+		non_key_param = cur_param;
+		break;
+	}
+	if (!non_key_param)
+		return -1;
+
+	memset(addr_to_set, 0, sizeof(*addr_to_set));
+	addr_to_set->sin_family = AF_INET;
+
+	char const * ip_str;
+	char const * port_str = strchr(non_key_param, ':');
+	if (!port_str) {
+		addr_to_set->sin_port = htons(DEFAULT_PORT);
+		ip_str = non_key_param;
+	} else {
+		ssize_t len = port_str - non_key_param; 
+		assert(len >= 0);
+		if (len > 15)
+			return -1;
+
+		ip_str = strncpy(ip_str_buf, non_key_param, (size_t)len);
+	}
+
+	// Установка IP адреса
+	addr_to_set->sin_addr.s_addr = inet_addr(ip_str);
+	if (addr_to_set->sin_addr.s_addr == (unsigned)-1)
+		return -1;
+
+	// Установка порта, если не был установлен выше
+	if (!addr_to_set->sin_port) {
+		int new_port = atoi(++port_str);
+		addr_to_set->sin_port = (new_port < 1 || new_port > UINT16_MAX)
+						? htons(DEFAULT_PORT)
+						: htons((in_port_t)new_port);
 	}
 	return 0;
 }
