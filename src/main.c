@@ -184,15 +184,14 @@ shutdown:
 // Глобальный указатель для колбека ниже
 char const * g_password = nullptr;
 
-static void
-kbd_callback([[maybe_unused]] char const * name,
-	     [[maybe_unused]] int name_len,
-	     [[maybe_unused]] char const * instruction,
-	     [[maybe_unused]] int instruction_len,
-	     int num_prompts,
-	     [[maybe_unused]] const LIBSSH2_USERAUTH_KBDINT_PROMPT * prompts,
-	     LIBSSH2_USERAUTH_KBDINT_RESPONSE * responses,
-	     [[maybe_unused]] void ** abstract)
+static void kbd_callback(char const *,
+			 int,
+			 char const *,
+			 int,
+			 int num_prompts,
+			 const LIBSSH2_USERAUTH_KBDINT_PROMPT *,
+			 LIBSSH2_USERAUTH_KBDINT_RESPONSE * responses,
+			 void **)
 {
 	if (num_prompts != 1)
 		return;
