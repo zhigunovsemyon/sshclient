@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <libssh2.h>
 
 #include <arpa/inet.h>
@@ -8,6 +7,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,15 +49,6 @@ int authentication(LIBSSH2_SESSION * session,
 		   int prog_argc,
 		   char const ** prog_argv);
 
-static void kbd_callback(char const * name,
-			 int name_len,
-			 char const * instruction,
-			 int instruction_len,
-			 int num_prompts,
-			 const LIBSSH2_USERAUTH_KBDINT_PROMPT * prompts,
-			 LIBSSH2_USERAUTH_KBDINT_RESPONSE * responses,
-			 void ** abstract);
-
 char const * get_username(int prog_argc, char const ** prog_argv);
 char const * get_password(int prog_argc, char const ** prog_argv);
 
@@ -72,24 +63,22 @@ int main(int argc, char const * argv[])
 		return 0;
 	}
 
-#ifdef _WIN32
-	WSADATA wsadata;
-
-	rc = WSAStartup(MAKEWORD(2, 0), &wsadata);
-	if (rc) {
-		fprintf(stderr, "WSAStartup failed with error: %d\n", rc);
-		return 1;
-	}
-#endif
-
 	struct sockaddr_in sin;
 	rc = set_destination(&sin, argc, argv);
 	if (rc) {
 		fprintf(stderr, "Invalid IP address!\n");
-		goto shutdown;
+		return -1;
 	}
 
 	char const * username = get_username(argc, argv);
+
+#ifdef _WIN32
+	WSADATA wsadata;
+	if (WSAStartup(MAKEWORD(2, 0), &wsadata)) {
+		fprintf(stderr, "WSAStartup failed with error: %d\n", rc);
+		return -1;
+	}
+#endif
 
 	rc = libssh2_init(0);
 	if (rc) {
@@ -173,10 +162,10 @@ int main(int argc, char const * argv[])
 		rc = communication_cycle(channel);
 		if (rc)
 			goto shutdown;
-	}
-	else{
+	} else {
 		cmds_start++;
-		rc = communication_single_command(channel, argc - cmds_start, argv + cmds_start);
+		rc = communication_single_command(channel, argc - cmds_start,
+						  argv + cmds_start);
 		if (rc)
 			goto shutdown;
 	}
@@ -250,12 +239,14 @@ void usage(char const * prog_path)
 {
 	fprintf(stderr,
 		"Использование программы:\n"
-		"%s ip логин пароль способ_аутентификации команда\n"
-		"Возможные ключи:\n"
-		"\t%s[=пароль] -- по паролю\n"
+		"%s ip[:порт] [-u=логин] способ_аутентификации [-c команды]\n"
+		"Если не указывать порт, используется 22\n"
+		"Если не указывать пользователя, будет использоваться текущий\n"
+		"Способы аутентификации:\n"
+		"\t%s[=пароль] -- по паролю в параметре или ручным вводом\n"
 		"\t%s -- по публичному ключу\n"
 		"\t%s -- интерактивный ввод\n", //
-		prog_path, AUTH_PASSWORD_KEY, AUTH_PUBLICKEY_KEY,
+		prog_path, AUTH_PASSWORD_INTERACTIVE_KEY, AUTH_PUBLICKEY_KEY,
 		AUTH_INTERACTIVE_KEY);
 }
 
@@ -542,7 +533,7 @@ char * combine_words(size_t count, char const ** words)
 		return nullptr;
 	}
 	word[0] = '\0';
-	for (size_t i = 0; i < count; ++i){
+	for (size_t i = 0; i < count; ++i) {
 		strcat(word, words[i]);
 		strcat(word, " ");
 	}
@@ -555,7 +546,7 @@ int communication_single_command(LIBSSH2_CHANNEL * channel,
 {
 	assert(cmd_count >= 0);
 	char * cmd = combine_words((size_t)cmd_count, cmds);
-	if (!cmd){
+	if (!cmd) {
 		fprintf(stderr, "Unable to allocate request command\n");
 		return -1;
 	}
