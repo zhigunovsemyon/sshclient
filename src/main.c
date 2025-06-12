@@ -14,14 +14,16 @@
 
 // Способ аутентификации
 enum AUTH_PW {
-	AUTH_PW_PASSWORD = 0b001,
-	AUTH_PW_KEYBOARD_INTERACTIVE = 0b010,
-	AUTH_PW_PUBLICKEY = 0b100
+	AUTH_PW_PASSWORD = 0b0001,
+	AUTH_PW_KEYBOARD_INTERACTIVE = 0b0010,
+	AUTH_PW_PUBLICKEY = 0b0100,
+	AUTH_PW_PASSWORD_INTERACTIVE = 0b1000
 };
 
 static in_port_t const DEFAULT_PORT = 22;
 
-static char const * const AUTH_PASSWORD_KEY = "-p";
+static char const * const AUTH_PASSWORD_KEY = "-p=";
+static char const * const AUTH_PASSWORD_INTERACTIVE_KEY = "-p";
 static char const * const AUTH_PUBLICKEY_KEY = "-k";
 static char const * const AUTH_INTERACTIVE_KEY = "-i";
 
@@ -55,6 +57,7 @@ static void kbd_callback(char const * name,
 			 void ** abstract);
 
 char const * get_username(int prog_argc, char const ** prog_argv);
+char const * get_password(int prog_argc, char const ** prog_argv);
 
 int main(int argc, char const * argv[])
 {
@@ -62,7 +65,8 @@ int main(int argc, char const * argv[])
 	int rc;
 	LIBSSH2_SESSION * session = NULL;
 
-	char const *username, *password;
+	char const *username;
+	// *password;
 
 	if (argc < 2) {
 		usage(*argv);
@@ -89,8 +93,8 @@ int main(int argc, char const * argv[])
 	username = get_username(argc, argv);
 
 	if (argc > 3) {
-		password = getpass("pass: ");
-			// argv[3];
+		// password = getpass("pass: ");
+		// argv[3];
 	}
 
 	rc = libssh2_init(0);
@@ -146,8 +150,8 @@ int main(int argc, char const * argv[])
 	fingerprint = libssh2_hostkey_hash(session, LIBSSH2_HOSTKEY_HASH_SHA1);
 	print_fingerprint(stderr, fingerprint);
 
-	printf("%s|\n",username);
-	rc = authentication(session, username, password, argc, argv);
+	printf("%s|\n", username);
+	rc = authentication(session, username, nullptr, argc, argv);
 	if (rc)
 		goto shutdown;
 
@@ -249,7 +253,7 @@ void usage(char const * prog_path)
 		"Использование программы:\n"
 		"%s ip логин пароль способ_аутентификации команда\n"
 		"Возможные ключи:\n"
-		"\t%s -- по паролю\n"
+		"\t%s[=пароль] -- по паролю\n"
 		"\t%s -- по публичному ключу\n"
 		"\t%s -- интерактивный ввод\n", //
 		prog_path, AUTH_PASSWORD_KEY, AUTH_PUBLICKEY_KEY,
@@ -324,7 +328,7 @@ int set_auth_ways(char const * userauthlist)
 {
 	int auth_pw = 0;
 	if (strstr(userauthlist, "password")) {
-		auth_pw |= AUTH_PW_PASSWORD;
+		auth_pw |= AUTH_PW_PASSWORD | AUTH_PW_PASSWORD_INTERACTIVE;
 	}
 	if (strstr(userauthlist, "keyboard-interactive")) {
 		auth_pw |= AUTH_PW_KEYBOARD_INTERACTIVE;
@@ -383,7 +387,9 @@ int authentication(LIBSSH2_SESSION * session,
 
 	if (auth_pw & AUTH_PW_KEYBOARD_INTERACTIVE) {
 		// Передача пароля в колбек через глобальную переменную
-		g_password = passwd;
+		g_password = get_password(prog_argc, prog_argv);
+		if (!g_password)
+			g_password = getpass("Пароль: ");
 		/* Or via keyboard-interactive */
 		if (libssh2_userauth_keyboard_interactive(session, username,
 							  &kbd_callback)) {
@@ -395,7 +401,11 @@ int authentication(LIBSSH2_SESSION * session,
 					"keyboard-interactive succeeded.\n");
 		}
 	} else if (auth_pw & AUTH_PW_PASSWORD) {
-		/* We could authenticate via password */
+		passwd = get_password(prog_argc,prog_argv);
+		if (!passwd){
+			fprintf(stderr, "Invalid password!\n");
+			return -1;
+		}
 		if (libssh2_userauth_password(session, username, passwd)) {
 
 			fprintf(stderr, "Authentication by password failed.\n");
@@ -497,10 +507,25 @@ int set_destination(struct sockaddr_in * addr_to_set,
 
 char const * get_username(int prog_argc, char const ** prog_argv)
 {
-	for (int i = 1; i < prog_argc; ++i){
-		if(!strncmp(prog_argv[i],USERNAME_KEY, strlen(USERNAME_KEY)))
+	for (int i = 1; i < prog_argc; ++i) {
+		if (!strncmp(prog_argv[i], USERNAME_KEY, strlen(USERNAME_KEY)))
 			return (prog_argv[i]) + strlen(USERNAME_KEY);
 	}
 
 	return getenv("USER");
+}
+
+char const * get_password(int prog_argc, char const ** prog_argv)
+{
+	for (int i = 1; i < prog_argc; ++i) {
+		if (!strncmp(prog_argv[i], AUTH_PASSWORD_KEY,
+			     strlen(AUTH_PASSWORD_KEY))) {
+			return (prog_argv[i]) + strlen(AUTH_PASSWORD_KEY);
+		}
+		if (!strncmp(prog_argv[i], AUTH_PASSWORD_INTERACTIVE_KEY,
+			     strlen(AUTH_PASSWORD_INTERACTIVE_KEY))) {
+			return getpass("Пароль: ");
+		}
+	}
+	return nullptr;
 }
