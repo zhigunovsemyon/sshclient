@@ -23,15 +23,18 @@ static char const * AUTH_INTERACTIVE_KEY = "-i";
 
 static char const * pubkey = ".ssh/id_rsa.pub";
 static char const * privkey = ".ssh/id_rsa";
-static char const * username = "username";
-static char const * password = "password";
+char const * username = "username";
+char const * password = "password";
 
 void usage(char const * prog_path);
 void print_fingerprint(FILE *, char const * fingerprint);
 
 int communication_cycle(LIBSSH2_CHANNEL *);
 
-int set_auth_way(char const * key, char const * userauthlist);
+int authentication(LIBSSH2_SESSION * session,
+		   char const * username,
+		   char const * passwd,
+		   char const * auth_way_key);
 
 static void
 kbd_callback([[maybe_unused]] char const * name,
@@ -135,8 +138,6 @@ int main(int argc, char const * argv[])
 		goto shutdown;
 	}
 
-	rc = 1;
-
 	/* At this point we have not yet authenticated.  The first thing to do
 	 * is check the hostkey's fingerprint against our known hosts Your app
 	 * may have it hard coded, may go to a file, may present it to the
@@ -146,84 +147,10 @@ int main(int argc, char const * argv[])
 	fingerprint = libssh2_hostkey_hash(session, LIBSSH2_HOSTKEY_HASH_SHA1);
 	print_fingerprint(stderr, fingerprint);
 
-	/* check what authentication methods are available */
-	char * userauthlist = libssh2_userauth_list(session, username,
-						    (uint32_t)strlen(username));
-
-	if (userauthlist) {
-		fprintf(stderr, "Authentication methods: %s\n", userauthlist);
-
-		/* check for options */
-		char const * auth_way_key = (argc > 4) ? argv[4] : nullptr;
-		int auth_pw = set_auth_way(auth_way_key, userauthlist);
-
-		if (auth_pw & AUTH_PW_KEYBOARD_INTERACTIVE) {
-			/* Or via keyboard-interactive */
-			if (libssh2_userauth_keyboard_interactive(
-				    session, username, &kbd_callback)) {
-				fprintf(stderr,
-					"Authentication by "
-					"keyboard-interactive failed.\n");
-				goto shutdown;
-			} else {
-				fprintf(stderr,
-					"Authentication by "
-					"keyboard-interactive succeeded.\n");
-			}
-		} else if (auth_pw & AUTH_PW_PASSWORD) {
-			/* We could authenticate via password */
-			if (libssh2_userauth_password(session, username,
-						      password)) {
-
-				fprintf(stderr,
-					"Authentication by password failed.\n");
-				goto shutdown;
-			} else {
-				fprintf(stderr, "Authentication by password "
-						"succeeded.\n");
-			}
-		} else if (auth_pw & AUTH_PW_PUBLICKEY) {
-			/* Or by public key */
-			size_t fn1sz, fn2sz;
-			char *fn1, *fn2;
-
-			char const * h = getenv("HOME");
-			if (!h || !*h)
-				h = ".";
-
-			fn1sz = strlen(h) + strlen(pubkey) + 2;
-			fn2sz = strlen(h) + strlen(privkey) + 2;
-			fn1 = malloc(fn1sz);
-			fn2 = malloc(fn2sz);
-			if (!fn1 || !fn2) {
-				free(fn2);
-				free(fn1);
-				fprintf(stderr, "out of memory\n");
-				goto shutdown;
-			}
-
-			snprintf(fn1, fn1sz, "%s/%s", h, pubkey);
-			snprintf(fn2, fn2sz, "%s/%s", h, privkey);
-
-			if (libssh2_userauth_publickey_fromfile(
-				    session, username, fn1, fn2, password)) {
-				fprintf(stderr, "Authentication by public key "
-						"failed.\n");
-				free(fn2);
-				free(fn1);
-				goto shutdown;
-			} else {
-				fprintf(stderr, "Authentication by public key "
-						"succeeded.\n");
-			}
-			free(fn2);
-			free(fn1);
-		} else {
-			fprintf(stderr,
-				"No supported authentication methods found.\n");
-			goto shutdown;
-		}
-	}
+	char const * auth_way_key = (argc > 4) ? argv[4] : nullptr;
+	rc = authentication(session, username, password, auth_way_key);
+	if (rc)
+		goto shutdown;
 
 	/* Request a session channel on which to run a shell */
 	LIBSSH2_CHANNEL * channel;
@@ -409,4 +336,85 @@ int set_auth_way(char const * key, char const * userauthlist)
 keep:
 	// Оставить как есть, несколько способов
 	return auth_pw;
+}
+
+int authentication(LIBSSH2_SESSION * session,
+		   char const * username,
+		   char const * passwd,
+		   char const * auth_way_key)
+{
+	/* check what authentication methods are available */
+	char * userauthlist = libssh2_userauth_list(session, username,
+						    (uint32_t)strlen(username));
+	if (!userauthlist)
+		return 0;
+	
+	// if userauthlist
+	fprintf(stderr, "Authentication methods: %s\n", userauthlist);
+
+	/* check for options */
+	int auth_pw = set_auth_way(auth_way_key, userauthlist);
+
+	if (auth_pw & AUTH_PW_KEYBOARD_INTERACTIVE) {
+		/* Or via keyboard-interactive */
+		if (libssh2_userauth_keyboard_interactive(session, username,
+							  &kbd_callback)) {
+			fprintf(stderr, "Authentication by "
+					"keyboard-interactive failed.\n");
+			return -1;
+		} else {
+			fprintf(stderr, "Authentication by "
+					"keyboard-interactive succeeded.\n");
+		}
+	} else if (auth_pw & AUTH_PW_PASSWORD) {
+		/* We could authenticate via password */
+		if (libssh2_userauth_password(session, username, passwd)) {
+
+			fprintf(stderr, "Authentication by password failed.\n");
+			return -1;
+		} else {
+			fprintf(stderr, "Authentication by password "
+					"succeeded.\n");
+		}
+	} else if (auth_pw & AUTH_PW_PUBLICKEY) {
+		/* Or by public key */
+		size_t fn1sz, fn2sz;
+		char *fn1, *fn2;
+
+		char const * h = getenv("HOME");
+		if (!h || !*h)
+			h = ".";
+
+		fn1sz = strlen(h) + strlen(pubkey) + 2;
+		fn2sz = strlen(h) + strlen(privkey) + 2;
+		fn1 = malloc(fn1sz);
+		fn2 = malloc(fn2sz);
+		if (!fn1 || !fn2) {
+			free(fn2);
+			free(fn1);
+			fprintf(stderr, "out of memory\n");
+			return -1;
+		}
+
+		snprintf(fn1, fn1sz, "%s/%s", h, pubkey);
+		snprintf(fn2, fn2sz, "%s/%s", h, privkey);
+
+		if (libssh2_userauth_publickey_fromfile(session, username, fn1,
+							fn2, passwd)) {
+			fprintf(stderr, "Authentication by public key "
+					"failed.\n");
+			free(fn2);
+			free(fn1);
+			return -1;
+		} else {
+			fprintf(stderr, "Authentication by public key "
+					"succeeded.\n");
+		}
+		free(fn2);
+		free(fn1);
+	} else {
+		fprintf(stderr, "No supported authentication methods found.\n");
+		return -1;
+	}
+	return 0;
 }
