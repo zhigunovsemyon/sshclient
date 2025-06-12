@@ -387,14 +387,13 @@ int authentication(LIBSSH2_SESSION * session,
 
 		fn1sz = strlen(h) + strlen(pubkey) + 2;
 		fn2sz = strlen(h) + strlen(privkey) + 2;
-		fn1 = malloc(fn1sz);
-		fn2 = malloc(fn2sz);
-		if (!fn1 || !fn2) {
-			free(fn2);
+		fn1 = malloc(fn1sz + fn2sz);
+		if (!fn1) {
 			free(fn1);
 			fprintf(stderr, "out of memory\n");
 			return -1;
 		}
+		fn2 = fn1 + fn1sz;
 
 		snprintf(fn1, fn1sz, "%s/%s", h, pubkey);
 		snprintf(fn2, fn2sz, "%s/%s", h, privkey);
@@ -403,14 +402,12 @@ int authentication(LIBSSH2_SESSION * session,
 							fn2, passwd)) {
 			fprintf(stderr, "Authentication by public key "
 					"failed.\n");
-			free(fn2);
 			free(fn1);
 			return -1;
 		} else {
 			fprintf(stderr, "Authentication by public key "
 					"succeeded.\n");
 		}
-		free(fn2);
 		free(fn1);
 	} else {
 		fprintf(stderr, "No supported authentication methods found.\n");
