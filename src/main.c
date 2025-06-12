@@ -111,9 +111,6 @@ int main(int argc, char const * argv[])
 		goto shutdown;
 	}
 
-	/* Enable all debugging when libssh2 was built with debugging enabled */
-	libssh2_trace(session, ~0);
-
 	rc = libssh2_session_handshake(session, sock);
 	if (rc) {
 		fprintf(stderr, "Failure establishing SSH session: %d\n", rc);
