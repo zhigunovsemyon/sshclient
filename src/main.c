@@ -86,9 +86,6 @@ int main(int argc, char const * argv[])
 		goto shutdown;
 	}
 
-	/* Ultra basic "connect to port 22 on localhost".  Your code is
-	 * responsible for creating the socket establishing the connection
-	 */
 	sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock == LIBSSH2_INVALID_SOCKET) {
 		fprintf(stderr, "failed to create socket.\n");
@@ -123,15 +120,6 @@ int main(int argc, char const * argv[])
 		goto shutdown;
 	}
 
-	/* At this point we have not yet authenticated.  The first thing to do
-	 * is check the hostkey's fingerprint against our known hosts Your app
-	 * may have it hard coded, may go to a file, may present it to the
-	 * user, that's your call
-	 */
-	char const * fingerprint;
-	fingerprint = libssh2_hostkey_hash(session, LIBSSH2_HOSTKEY_HASH_SHA1);
-	print_fingerprint(stderr, fingerprint);
-
 	rc = authentication(session, username, argc, argv);
 	if (rc)
 		goto shutdown;
@@ -144,11 +132,6 @@ int main(int argc, char const * argv[])
 		goto shutdown;
 	}
 
-	/* Some environment variables may be set,
-	 * It's up to the server which ones it'll allow though
-	 */
-	// libssh2_channel_setenv(channel, "FOO", "bar");
-
 	/* Request a terminal with 'vanilla' terminal emulation
 	 * See /etc/termcap for more options. This is useful when opening
 	 * an interactive shell.
@@ -160,15 +143,13 @@ int main(int argc, char const * argv[])
 	int cmds_start = get_communication_type(argc, argv);
 	if (cmds_start == -1) {
 		rc = communication_cycle(channel);
-		if (rc)
-			goto shutdown;
 	} else {
 		cmds_start++;
 		rc = communication_single_command(channel, argc - cmds_start,
 						  argv + cmds_start);
-		if (rc)
-			goto shutdown;
 	}
+	if (rc)
+		goto shutdown;
 
 	rc = libssh2_channel_get_exit_status(channel);
 
@@ -179,12 +160,6 @@ int main(int argc, char const * argv[])
 		libssh2_channel_free(channel);
 		channel = NULL;
 	}
-
-	/* Other channel types are supported via:
-	 * libssh2_scp_send()
-	 * libssh2_scp_recv2()
-	 * libssh2_channel_direct_tcpip()
-	 */
 
 shutdown:
 	if (session) {
@@ -252,12 +227,7 @@ void usage(char const * prog_path)
 
 int communication_cycle(LIBSSH2_CHANNEL * channel)
 {
-	/* Instead of just running a single command with
-	 * libssh2_channel_exec, a shell can be opened on the channel
-	 * instead, for interactive use. You usually want a pty
-	 * allocated first in that case (see above). */
 	if (libssh2_channel_shell(channel)) {
-
 		fprintf(stderr, "Unable to request shell on allocated pty\n");
 		return -1;
 	}
@@ -285,6 +255,8 @@ int communication_cycle(LIBSSH2_CHANNEL * channel)
 	 * this. See ssh2_echo.c for an idea of how such a loop might
 	 * look.
 	 */
+
+	char const * response = "\x04";
 	while (!libssh2_channel_eof(channel)) {
 
 		char buf[1024];
@@ -296,13 +268,20 @@ int communication_cycle(LIBSSH2_CHANNEL * channel)
 			fwrite(buf, 1, (size_t)err, stdout);
 		}
 
-		char const * response = "\x04";
+		// if (!fgets(response, 98, stdin)) {
+		// 	libssh2_channel_send_eof(channel);
+		// 	continue;
+		// 	// break;
+		// }
+
 		err = libssh2_channel_write(channel, response,
 					    strlen(response));
 
 		if (err < 0)
 			fprintf(stderr, "Unable to write response: %ld\n", err);
+		// printf("sent\n");
 		// sleep(4);
+		// response = nullptr;
 	}
 	return 0;
 }
