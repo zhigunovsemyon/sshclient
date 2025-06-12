@@ -231,58 +231,37 @@ int communication_cycle(LIBSSH2_CHANNEL * channel)
 		return -1;
 	}
 
-	/* At this point the shell can be interacted with using
-	 * libssh2_channel_read()
-	 * libssh2_channel_read_stderr()
-	 * libssh2_channel_write()
-	 * libssh2_channel_write_stderr()
-	 *
-	 * Blocking mode may be (en|dis)abled with:
-	 *    libssh2_channel_set_blocking()
-	 * If the server send EOF, libssh2_channel_eof() will return
-	 * non-0 To send EOF to the server use:
-	 * libssh2_channel_send_eof() A channel can be closed with:
-	 * libssh2_channel_close() A channel can be freed with:
-	 * libssh2_channel_free()
-	 */
+	constexpr ssize_t r_buf_size = 1024;
+	constexpr ssize_t w_buf_size = 128;
+	char r_buf[r_buf_size + 1];
+	char w_buf[w_buf_size + 1];
 
-	/* Read and display all the data received on stdout (ignoring
-	 * stderr) until the channel closes. This will eventually block
-	 * if the command produces too much data on stderr; the loop
-	 * must be rewritten to use non-blocking mode and include
-	 * interspersed calls to libssh2_channel_read_stderr() to avoid
-	 * this. See ssh2_echo.c for an idea of how such a loop might
-	 * look.
-	 */
-
-	char response[100];
 	while (!libssh2_channel_eof(channel)) {
-		constexpr ssize_t buf_size = 1024;
-		char buf[buf_size + 1];
-		ssize_t err = libssh2_channel_read(channel, buf, buf_size);
+		ssize_t read_count =
+			libssh2_channel_read(channel, r_buf, r_buf_size);
 
-		if (err < 0)
-			fprintf(stderr, "Unable to read response: %ld\n", err);
+		if (read_count < 0)
+			fprintf(stderr, "Unable to read response: %ld\n", read_count);
 		else {
-			fwrite(buf, 1, (size_t)err, stdout);
+			fwrite(r_buf, 1, (size_t)read_count, stdout);
 		}
 
-		if (err < buf_size) {
-			if (!fgets(response, 98, stdin)) {
-				libssh2_channel_send_eof(channel);
-				break;
-			}
+		// Не читать ввод пользователя, пока не завершится вывод
+		if (read_count == r_buf_size)
+			continue;
+
+		// Чтение stdin. Если EOF -- завершить цикл
+		if (!fgets(w_buf, 98, stdin)) {
+			libssh2_channel_send_eof(channel);
+			break;
 		}
 
-		err = libssh2_channel_write(channel, response,
-					    strlen(response));
+		read_count = libssh2_channel_write(channel, w_buf, strlen(w_buf));
 
-		if (err < 0)
-			fprintf(stderr, "Unable to write response: %ld\n", err);
-		// printf("sent\n");
-		// sleep(4);
-		// response = nullptr;
+		if (read_count < 0)
+			fprintf(stderr, "Unable to write w_buf: %ld\n", read_count);
 	}
+
 	return 0;
 }
 
