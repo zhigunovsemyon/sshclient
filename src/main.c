@@ -46,22 +46,14 @@ int authentication(LIBSSH2_SESSION * session,
 		   int prog_argc,
 		   char const ** prog_argv);
 
-static void
-kbd_callback([[maybe_unused]] char const * name,
-	     [[maybe_unused]] int name_len,
-	     [[maybe_unused]] char const * instruction,
-	     [[maybe_unused]] int instruction_len,
-	     int num_prompts,
-	     [[maybe_unused]] const LIBSSH2_USERAUTH_KBDINT_PROMPT * prompts,
-	     LIBSSH2_USERAUTH_KBDINT_RESPONSE * responses,
-	     [[maybe_unused]] void ** abstract)
-{
-	if (num_prompts != 1)
-		return;
-
-	responses[0].text = strdup(password);
-	responses[0].length = (unsigned int)strlen(password);
-}
+static void kbd_callback(char const * name,
+			 int name_len,
+			 char const * instruction,
+			 int instruction_len,
+			 int num_prompts,
+			 const LIBSSH2_USERAUTH_KBDINT_PROMPT * prompts,
+			 LIBSSH2_USERAUTH_KBDINT_RESPONSE * responses,
+			 void ** abstract);
 
 int main(int argc, char const * argv[])
 {
@@ -217,6 +209,24 @@ shutdown:
 #endif
 	return rc;
 }
+
+static void
+kbd_callback([[maybe_unused]] char const * name,
+	     [[maybe_unused]] int name_len,
+	     [[maybe_unused]] char const * instruction,
+	     [[maybe_unused]] int instruction_len,
+	     int num_prompts,
+	     [[maybe_unused]] const LIBSSH2_USERAUTH_KBDINT_PROMPT * prompts,
+	     LIBSSH2_USERAUTH_KBDINT_RESPONSE * responses,
+	     [[maybe_unused]] void ** abstract)
+{
+	if (num_prompts != 1)
+		return;
+
+	responses[0].text = strdup(password);
+	responses[0].length = (unsigned int)strlen(password);
+}
+
 
 void print_fingerprint(FILE * stream, char const * fingerprint)
 {
@@ -450,7 +460,7 @@ int set_destination(struct sockaddr_in * addr_to_set,
 	char const * ip_str;
 	char const * port_str = strchr(non_key_param, ':');
 	if (!port_str) {
-		//Установка стандартного порта
+		// Установка стандартного порта
 		addr_to_set->sin_port = htons(DEFAULT_PORT);
 		ip_str = non_key_param;
 	} else {
