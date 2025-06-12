@@ -17,7 +17,6 @@ enum AUTH_PW {
 	AUTH_PW_PASSWORD = 0b0001,
 	AUTH_PW_KEYBOARD_INTERACTIVE = 0b0010,
 	AUTH_PW_PUBLICKEY = 0b0100,
-	AUTH_PW_PASSWORD_INTERACTIVE = 0b1000
 };
 
 static in_port_t const DEFAULT_PORT = 22;
@@ -26,7 +25,6 @@ static char const * const AUTH_PASSWORD_KEY = "-p=";
 static char const * const AUTH_PASSWORD_INTERACTIVE_KEY = "-p";
 static char const * const AUTH_PUBLICKEY_KEY = "-k";
 static char const * const AUTH_INTERACTIVE_KEY = "-i";
-
 static char const * const USERNAME_KEY = "-u=";
 
 static char const * const pubkey = ".ssh/id_rsa.pub";
@@ -43,7 +41,6 @@ int set_destination(struct sockaddr_in * addr_to_set,
 
 int authentication(LIBSSH2_SESSION * session,
 		   char const * username,
-		   char const * passwd,
 		   int prog_argc,
 		   char const ** prog_argv);
 
@@ -64,9 +61,6 @@ int main(int argc, char const * argv[])
 	libssh2_socket_t sock = LIBSSH2_INVALID_SOCKET;
 	int rc;
 	LIBSSH2_SESSION * session = NULL;
-
-	char const *username;
-	// *password;
 
 	if (argc < 2) {
 		usage(*argv);
@@ -90,15 +84,9 @@ int main(int argc, char const * argv[])
 		goto shutdown;
 	}
 
-	username = get_username(argc, argv);
-
-	if (argc > 3) {
-		// password = getpass("pass: ");
-		// argv[3];
-	}
+	char const * username = get_username(argc, argv);
 
 	rc = libssh2_init(0);
-
 	if (rc) {
 		fprintf(stderr, "libssh2 initialization failed (%d)\n", rc);
 		goto shutdown;
@@ -150,8 +138,7 @@ int main(int argc, char const * argv[])
 	fingerprint = libssh2_hostkey_hash(session, LIBSSH2_HOSTKEY_HASH_SHA1);
 	print_fingerprint(stderr, fingerprint);
 
-	printf("%s|\n", username);
-	rc = authentication(session, username, nullptr, argc, argv);
+	rc = authentication(session, username, argc, argv);
 	if (rc)
 		goto shutdown;
 
@@ -176,11 +163,9 @@ int main(int argc, char const * argv[])
 		fprintf(stderr, "Failed requesting pty\n");
 	}
 
-	if (argc > 5) {
-		rc = communication_cycle(channel);
-		if (rc)
-			goto shutdown;
-	}
+	rc = communication_cycle(channel);
+	if (rc)
+		goto shutdown;
 
 	rc = libssh2_channel_get_exit_status(channel);
 
@@ -328,7 +313,7 @@ int set_auth_ways(char const * userauthlist)
 {
 	int auth_pw = 0;
 	if (strstr(userauthlist, "password")) {
-		auth_pw |= AUTH_PW_PASSWORD | AUTH_PW_PASSWORD_INTERACTIVE;
+		auth_pw |= AUTH_PW_PASSWORD;
 	}
 	if (strstr(userauthlist, "keyboard-interactive")) {
 		auth_pw |= AUTH_PW_KEYBOARD_INTERACTIVE;
@@ -369,7 +354,6 @@ int set_auth_way(int prog_argc,
 
 int authentication(LIBSSH2_SESSION * session,
 		   char const * username,
-		   char const * passwd,
 		   int prog_argc,
 		   char const ** prog_argv)
 {
@@ -401,8 +385,8 @@ int authentication(LIBSSH2_SESSION * session,
 					"keyboard-interactive succeeded.\n");
 		}
 	} else if (auth_pw & AUTH_PW_PASSWORD) {
-		passwd = get_password(prog_argc,prog_argv);
-		if (!passwd){
+		char const * passwd = get_password(prog_argc, prog_argv);
+		if (!passwd) {
 			fprintf(stderr, "Invalid password!\n");
 			return -1;
 		}
@@ -437,7 +421,7 @@ int authentication(LIBSSH2_SESSION * session,
 		snprintf(fn2, fn2sz, "%s/%s", h, privkey);
 
 		if (libssh2_userauth_publickey_fromfile(session, username, fn1,
-							fn2, passwd)) {
+							fn2, nullptr)) {
 			fprintf(stderr, "Authentication by public key "
 					"failed.\n");
 			free(fn1);
