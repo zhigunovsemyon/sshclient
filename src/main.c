@@ -26,6 +26,7 @@ static char const * const AUTH_PASSWORD_INTERACTIVE_KEY = "-p";
 static char const * const AUTH_PUBLICKEY_KEY = "-k";
 static char const * const AUTH_INTERACTIVE_KEY = "-i";
 static char const * const USERNAME_KEY = "-u=";
+static char const * const COMMAND_KEY = "-c";
 
 static char const * const pubkey = ".ssh/id_rsa.pub";
 static char const * const privkey = ".ssh/id_rsa";
@@ -34,6 +35,10 @@ void usage(char const * prog_path);
 void print_fingerprint(FILE *, char const * fingerprint);
 
 int communication_cycle(LIBSSH2_CHANNEL *);
+int get_communication_type(int prog_argc, char const ** prog_argv);
+int communication_single_command(LIBSSH2_CHANNEL *,
+				 int cmd_count,
+				 char const ** cmds);
 
 int set_destination(struct sockaddr_in * addr_to_set,
 		    int prog_argc,
@@ -163,9 +168,18 @@ int main(int argc, char const * argv[])
 		fprintf(stderr, "Failed requesting pty\n");
 	}
 
-	rc = communication_cycle(channel);
-	if (rc)
-		goto shutdown;
+	int cmds_start = get_communication_type(argc, argv);
+	if (cmds_start == -1) {
+		rc = communication_cycle(channel);
+		if (rc)
+			goto shutdown;
+	}
+	else{
+		cmds_start++;
+		rc = communication_single_command(channel, argc - cmds_start, argv + cmds_start);
+		if (rc)
+			goto shutdown;
+	}
 
 	rc = libssh2_channel_get_exit_status(channel);
 
@@ -247,13 +261,6 @@ void usage(char const * prog_path)
 
 int communication_cycle(LIBSSH2_CHANNEL * channel)
 {
-	// if (libssh2_channel_exec(channel, argv[5])) {
-	//
-	// 	fprintf(stderr,
-	// 		"Unable to request command on channel\n");
-	// 	goto shutdown;
-	// }
-
 	/* Instead of just running a single command with
 	 * libssh2_channel_exec, a shell can be opened on the channel
 	 * instead, for interactive use. You usually want a pty
@@ -512,4 +519,73 @@ char const * get_password(int prog_argc, char const ** prog_argv)
 		}
 	}
 	return nullptr;
+}
+
+int get_communication_type(int prog_argc, char const ** prog_argv)
+{
+	int i;
+	for (i = 1; i < prog_argc; ++i) {
+		if (!strncmp(prog_argv[i], COMMAND_KEY, strlen(COMMAND_KEY)))
+			break;
+	}
+	return (i == prog_argc) ? -1 : i;
+}
+
+char * combine_words(size_t count, char const ** words)
+{
+	size_t word_len = 0;
+	for (size_t i = 0; i < count; ++i)
+		word_len += strlen(words[i]) + 1;
+
+	char * word = malloc(word_len);
+	if (!word) {
+		return nullptr;
+	}
+	word[0] = '\0';
+	for (size_t i = 0; i < count; ++i){
+		strcat(word, words[i]);
+		strcat(word, " ");
+	}
+	return word;
+}
+
+int communication_single_command(LIBSSH2_CHANNEL * channel,
+				 int cmd_count,
+				 char const ** cmds)
+{
+	assert(cmd_count >= 0);
+	char * cmd = combine_words((size_t)cmd_count, cmds);
+	if (!cmd){
+		fprintf(stderr, "Unable to allocate request command\n");
+		return -1;
+	}
+
+	if (libssh2_channel_exec(channel, cmd)) {
+		fprintf(stderr, "Unable to request command on channel\n");
+		free(cmd);
+		return -1;
+	}
+
+	while (!libssh2_channel_eof(channel)) {
+
+		char buf[1024];
+		ssize_t err = libssh2_channel_read(channel, buf, sizeof(buf));
+
+		if (err < 0)
+			fprintf(stderr, "Unable to read response: %ld\n", err);
+		else {
+			fwrite(buf, 1, (size_t)err, stdout);
+		}
+
+		char const * response = "\x04";
+		err = libssh2_channel_write(channel, response,
+					    strlen(response));
+
+		if (err < 0)
+			fprintf(stderr, "Unable to write response: %ld\n", err);
+		// sleep(4);
+	}
+
+	free(cmd);
+	return 0;
 }
