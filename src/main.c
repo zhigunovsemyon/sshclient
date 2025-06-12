@@ -21,12 +21,13 @@ enum AUTH_PW {
 
 static in_port_t const DEFAULT_PORT = 22;
 
-static char const * AUTH_PASSWORD_KEY = "-p";
-static char const * AUTH_PUBLICKEY_KEY = "-k";
-static char const * AUTH_INTERACTIVE_KEY = "-i";
+static char const * const AUTH_PASSWORD_KEY = "-p";
+static char const * const AUTH_PUBLICKEY_KEY = "-k";
+static char const * const AUTH_INTERACTIVE_KEY = "-i";
 
-static char const * pubkey = ".ssh/id_rsa.pub";
-static char const * privkey = ".ssh/id_rsa";
+static char const * const pubkey = ".ssh/id_rsa.pub";
+static char const * const privkey = ".ssh/id_rsa";
+
 char const * username = "username";
 char const * password = "password";
 
@@ -64,7 +65,6 @@ kbd_callback([[maybe_unused]] char const * name,
 
 int main(int argc, char const * argv[])
 {
-	// uint32_t hostaddr;
 	libssh2_socket_t sock;
 	struct sockaddr_in sin;
 	int rc;
@@ -85,11 +85,6 @@ int main(int argc, char const * argv[])
 	}
 #endif
 
-	// if (argc > 1) {
-	// 	hostaddr = inet_addr(argv[1]);
-	// } else {
-	// 	hostaddr = htonl(0x7F000001);
-	// }
 	rc = set_destination(&sin, argc, argv);
 	if (rc) {
 		fprintf(stderr, "Invalid IP address!\n");
@@ -465,12 +460,17 @@ int set_destination(struct sockaddr_in * addr_to_set,
 		addr_to_set->sin_port = htons(DEFAULT_PORT);
 		ip_str = non_key_param;
 	} else {
-		ssize_t len = port_str - non_key_param; 
+		ssize_t len = port_str - non_key_param;
 		assert(len >= 0);
 		if (len > 15)
 			return -1;
 
 		ip_str = strncpy(ip_str_buf, non_key_param, (size_t)len);
+
+		int new_port = atoi(++port_str);
+		addr_to_set->sin_port = (new_port < 1 || new_port > UINT16_MAX)
+						? htons(DEFAULT_PORT)
+						: htons((in_port_t)new_port);
 	}
 
 	// Установка IP адреса
@@ -478,12 +478,5 @@ int set_destination(struct sockaddr_in * addr_to_set,
 	if (addr_to_set->sin_addr.s_addr == (unsigned)-1)
 		return -1;
 
-	// Установка порта, если не был установлен выше
-	if (!addr_to_set->sin_port) {
-		int new_port = atoi(++port_str);
-		addr_to_set->sin_port = (new_port < 1 || new_port > UINT16_MAX)
-						? htons(DEFAULT_PORT)
-						: htons((in_port_t)new_port);
-	}
 	return 0;
 }
