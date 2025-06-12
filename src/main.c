@@ -34,7 +34,8 @@ int communication_cycle(LIBSSH2_CHANNEL *);
 int authentication(LIBSSH2_SESSION * session,
 		   char const * username,
 		   char const * passwd,
-		   char const * auth_way_key);
+		   int prog_argc,
+		   char const ** prog_argv);
 
 static void
 kbd_callback([[maybe_unused]] char const * name,
@@ -147,8 +148,7 @@ int main(int argc, char const * argv[])
 	fingerprint = libssh2_hostkey_hash(session, LIBSSH2_HOSTKEY_HASH_SHA1);
 	print_fingerprint(stderr, fingerprint);
 
-	char const * auth_way_key = (argc > 4) ? argv[4] : nullptr;
-	rc = authentication(session, username, password, auth_way_key);
+	rc = authentication(session, username, password, argc, argv);
 	if (rc)
 		goto shutdown;
 
@@ -317,43 +317,51 @@ int set_auth_ways(char const * userauthlist)
 	return auth_pw;
 }
 
-int set_auth_way(char const * key, char const * userauthlist)
+int set_auth_way(int prog_argc,
+		 char const ** prog_argv,
+		 char const * userauthlist)
 {
 	int auth_pw = set_auth_ways(userauthlist);
-	if (key == nullptr)
-		goto keep;
+	for (int i = 0; i < prog_argc; ++i) {
+		char const * key = prog_argv[i];
+		assert(key != nullptr);
+		if (key[0] != '-')
+			continue;
 
-	if ((auth_pw & AUTH_PW_PASSWORD) && !strcmp(key, AUTH_PASSWORD_KEY)) {
-		return AUTH_PW_PASSWORD;
+		if ((auth_pw & AUTH_PW_PASSWORD) &&
+		    !strcmp(key, AUTH_PASSWORD_KEY)) {
+			return AUTH_PW_PASSWORD;
+		}
+		if ((auth_pw & AUTH_PW_KEYBOARD_INTERACTIVE) &&
+		    !strcmp(key, AUTH_INTERACTIVE_KEY)) {
+			return AUTH_PW_KEYBOARD_INTERACTIVE;
+		}
+		if ((auth_pw & AUTH_PW_PUBLICKEY) &&
+		    !strcmp(key, AUTH_PUBLICKEY_KEY)) {
+			return AUTH_PW_PUBLICKEY;
+		}
 	}
-	if ((auth_pw & AUTH_PW_KEYBOARD_INTERACTIVE) &&
-	    !strcmp(key, AUTH_INTERACTIVE_KEY)) {
-		return AUTH_PW_KEYBOARD_INTERACTIVE;
-	}
-	if ((auth_pw & AUTH_PW_PUBLICKEY) && !strcmp(key, AUTH_PUBLICKEY_KEY)) {
-		return AUTH_PW_PUBLICKEY;
-	}
-keep:
-	// Оставить как есть, несколько способов
+	// Если ключа не было, оставить как есть, несколько способов
 	return auth_pw;
 }
 
 int authentication(LIBSSH2_SESSION * session,
 		   char const * username,
 		   char const * passwd,
-		   char const * auth_way_key)
+		   int prog_argc,
+		   char const ** prog_argv)
 {
 	/* check what authentication methods are available */
 	char * userauthlist = libssh2_userauth_list(session, username,
 						    (uint32_t)strlen(username));
 	if (!userauthlist)
 		return 0;
-	
+
 	// if userauthlist
 	fprintf(stderr, "Authentication methods: %s\n", userauthlist);
 
 	/* check for options */
-	int auth_pw = set_auth_way(auth_way_key, userauthlist);
+	int auth_pw = set_auth_way(prog_argc, prog_argv, userauthlist);
 
 	if (auth_pw & AUTH_PW_KEYBOARD_INTERACTIVE) {
 		/* Or via keyboard-interactive */
