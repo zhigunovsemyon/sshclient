@@ -28,9 +28,6 @@ static char const * const AUTH_INTERACTIVE_KEY = "-i";
 static char const * const pubkey = ".ssh/id_rsa.pub";
 static char const * const privkey = ".ssh/id_rsa";
 
-char const * username = "username";
-char const * password = "password";
-
 void usage(char const * prog_path);
 void print_fingerprint(FILE *, char const * fingerprint);
 
@@ -60,6 +57,8 @@ int main(int argc, char const * argv[])
 	libssh2_socket_t sock = LIBSSH2_INVALID_SOCKET;
 	int rc;
 	LIBSSH2_SESSION * session = NULL;
+
+	char const * username, * password;
 
 	if (argc < 2) {
 		usage(*argv);
@@ -210,6 +209,8 @@ shutdown:
 	return rc;
 }
 
+// Глобальный указатель для колбека ниже
+char const * g_password = nullptr;
 static void
 kbd_callback([[maybe_unused]] char const * name,
 	     [[maybe_unused]] int name_len,
@@ -223,8 +224,8 @@ kbd_callback([[maybe_unused]] char const * name,
 	if (num_prompts != 1)
 		return;
 
-	responses[0].text = strdup(password);
-	responses[0].length = (unsigned int)strlen(password);
+	responses[0].text = strdup(g_password);
+	responses[0].length = (unsigned int)strlen(g_password);
 }
 
 
@@ -376,6 +377,8 @@ int authentication(LIBSSH2_SESSION * session,
 	int auth_pw = set_auth_way(prog_argc, prog_argv, userauthlist);
 
 	if (auth_pw & AUTH_PW_KEYBOARD_INTERACTIVE) {
+		// Передача пароля в колбек через глобальную переменную
+		g_password = passwd;
 		/* Or via keyboard-interactive */
 		if (libssh2_userauth_keyboard_interactive(session, username,
 							  &kbd_callback)) {
