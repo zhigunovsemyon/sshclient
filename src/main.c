@@ -255,11 +255,11 @@ int communication_cycle(LIBSSH2_CHANNEL * channel)
 	 * look.
 	 */
 
-	char const * response = "\x04";
+	char response[100];
 	while (!libssh2_channel_eof(channel)) {
-
-		char buf[1024];
-		ssize_t err = libssh2_channel_read(channel, buf, sizeof(buf));
+		constexpr ssize_t buf_size = 1024;
+		char buf[buf_size + 1];
+		ssize_t err = libssh2_channel_read(channel, buf, buf_size);
 
 		if (err < 0)
 			fprintf(stderr, "Unable to read response: %ld\n", err);
@@ -267,11 +267,12 @@ int communication_cycle(LIBSSH2_CHANNEL * channel)
 			fwrite(buf, 1, (size_t)err, stdout);
 		}
 
-		// if (!fgets(response, 98, stdin)) {
-		// 	libssh2_channel_send_eof(channel);
-		// 	continue;
-		// 	// break;
-		// }
+		if (err < buf_size) {
+			if (!fgets(response, 98, stdin)) {
+				libssh2_channel_send_eof(channel);
+				break;
+			}
+		}
 
 		err = libssh2_channel_write(channel, response,
 					    strlen(response));
