@@ -25,6 +25,8 @@ static char const * const AUTH_PASSWORD_KEY = "-p";
 static char const * const AUTH_PUBLICKEY_KEY = "-k";
 static char const * const AUTH_INTERACTIVE_KEY = "-i";
 
+static char const * const USERNAME_KEY = "-u=";
+
 static char const * const pubkey = ".ssh/id_rsa.pub";
 static char const * const privkey = ".ssh/id_rsa";
 
@@ -52,13 +54,15 @@ static void kbd_callback(char const * name,
 			 LIBSSH2_USERAUTH_KBDINT_RESPONSE * responses,
 			 void ** abstract);
 
+char const * get_username(int prog_argc, char const ** prog_argv);
+
 int main(int argc, char const * argv[])
 {
 	libssh2_socket_t sock = LIBSSH2_INVALID_SOCKET;
 	int rc;
 	LIBSSH2_SESSION * session = NULL;
 
-	char const * username, * password;
+	char const *username, *password;
 
 	if (argc < 2) {
 		usage(*argv);
@@ -82,11 +86,11 @@ int main(int argc, char const * argv[])
 		goto shutdown;
 	}
 
-	if (argc > 2) {
-		username = argv[2];
-	}
+	username = get_username(argc, argv);
+
 	if (argc > 3) {
-		password = argv[3];
+		password = getpass("pass: ");
+			// argv[3];
 	}
 
 	rc = libssh2_init(0);
@@ -142,6 +146,7 @@ int main(int argc, char const * argv[])
 	fingerprint = libssh2_hostkey_hash(session, LIBSSH2_HOSTKEY_HASH_SHA1);
 	print_fingerprint(stderr, fingerprint);
 
+	printf("%s|\n",username);
 	rc = authentication(session, username, password, argc, argv);
 	if (rc)
 		goto shutdown;
@@ -211,6 +216,7 @@ shutdown:
 
 // Глобальный указатель для колбека ниже
 char const * g_password = nullptr;
+
 static void
 kbd_callback([[maybe_unused]] char const * name,
 	     [[maybe_unused]] int name_len,
@@ -227,7 +233,6 @@ kbd_callback([[maybe_unused]] char const * name,
 	responses[0].text = strdup(g_password);
 	responses[0].length = (unsigned int)strlen(g_password);
 }
-
 
 void print_fingerprint(FILE * stream, char const * fingerprint)
 {
@@ -488,4 +493,14 @@ int set_destination(struct sockaddr_in * addr_to_set,
 		return -1;
 
 	return 0;
+}
+
+char const * get_username(int prog_argc, char const ** prog_argv)
+{
+	for (int i = 1; i < prog_argc; ++i){
+		if(!strncmp(prog_argv[i],USERNAME_KEY, strlen(USERNAME_KEY)))
+			return (prog_argv[i]) + strlen(USERNAME_KEY);
+	}
+
+	return getenv("USER");
 }
