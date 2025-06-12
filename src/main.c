@@ -65,8 +65,7 @@ kbd_callback([[maybe_unused]] char const * name,
 
 int main(int argc, char const * argv[])
 {
-	libssh2_socket_t sock;
-	struct sockaddr_in sin;
+	libssh2_socket_t sock = LIBSSH2_INVALID_SOCKET;
 	int rc;
 	LIBSSH2_SESSION * session = NULL;
 
@@ -85,10 +84,10 @@ int main(int argc, char const * argv[])
 	}
 #endif
 
+	struct sockaddr_in sin;
 	rc = set_destination(&sin, argc, argv);
 	if (rc) {
 		fprintf(stderr, "Invalid IP address!\n");
-		sock = LIBSSH2_INVALID_SOCKET;
 		goto shutdown;
 	}
 
@@ -103,7 +102,7 @@ int main(int argc, char const * argv[])
 
 	if (rc) {
 		fprintf(stderr, "libssh2 initialization failed (%d)\n", rc);
-		return 1;
+		goto shutdown;
 	}
 
 	/* Ultra basic "connect to port 22 on localhost".  Your code is
@@ -115,10 +114,6 @@ int main(int argc, char const * argv[])
 		rc = 1;
 		goto shutdown;
 	}
-
-	// sin.sin_family = AF_INET;
-	// sin.sin_port = htons(2022);
-	// sin.sin_addr.s_addr = hostaddr;
 
 	fprintf(stderr, "Connecting to %s:%d as user %s\n",
 		inet_ntoa(sin.sin_addr), ntohs(sin.sin_port), username);
@@ -133,7 +128,6 @@ int main(int argc, char const * argv[])
 	 * banners, exchange keys, and setup crypto, compression, and MAC layers
 	 */
 	session = libssh2_session_init();
-
 	if (!session) {
 		fprintf(stderr, "Could not initialize SSH session.\n");
 		goto shutdown;
@@ -143,7 +137,6 @@ int main(int argc, char const * argv[])
 	libssh2_trace(session, ~0);
 
 	rc = libssh2_session_handshake(session, sock);
-
 	if (rc) {
 		fprintf(stderr, "Failure establishing SSH session: %d\n", rc);
 		goto shutdown;
@@ -196,7 +189,6 @@ int main(int argc, char const * argv[])
 
 	if (channel) {
 		libssh2_channel_free(channel);
-
 		channel = NULL;
 	}
 
@@ -439,6 +431,7 @@ int set_destination(struct sockaddr_in * addr_to_set,
 		    char const ** prog_argv)
 {
 	char ip_str_buf[16] = {};
+
 	char const * non_key_param = nullptr;
 	for (int i = 1; i < prog_argc; ++i) {
 		char const * cur_param = prog_argv[i];
@@ -457,9 +450,11 @@ int set_destination(struct sockaddr_in * addr_to_set,
 	char const * ip_str;
 	char const * port_str = strchr(non_key_param, ':');
 	if (!port_str) {
+		//Установка стандартного порта
 		addr_to_set->sin_port = htons(DEFAULT_PORT);
 		ip_str = non_key_param;
 	} else {
+		// Копирование IP-адреса в отдельный буфер без :порта
 		ssize_t len = port_str - non_key_param;
 		assert(len >= 0);
 		if (len > 15)
@@ -467,6 +462,7 @@ int set_destination(struct sockaddr_in * addr_to_set,
 
 		ip_str = strncpy(ip_str_buf, non_key_param, (size_t)len);
 
+		// Непосредственно установка порта
 		int new_port = atoi(++port_str);
 		addr_to_set->sin_port = (new_port < 1 || new_port > UINT16_MAX)
 						? htons(DEFAULT_PORT)
@@ -475,7 +471,7 @@ int set_destination(struct sockaddr_in * addr_to_set,
 
 	// Установка IP адреса
 	addr_to_set->sin_addr.s_addr = inet_addr(ip_str);
-	if (addr_to_set->sin_addr.s_addr == (unsigned)-1)
+	if (addr_to_set->sin_addr.s_addr == (in_addr_t)-1)
 		return -1;
 
 	return 0;
