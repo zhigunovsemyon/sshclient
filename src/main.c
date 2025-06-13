@@ -462,13 +462,6 @@ int communication_single_command(LIBSSH2_CHANNEL * channel,
 		else {
 			fwrite(buf, 1, (size_t)err, stdout);
 		}
-
-		char const * response = "\x04";
-		err = libssh2_channel_write(channel, response,
-					    strlen(response));
-
-		if (err < 0)
-			fprintf(stderr, "Unable to write response: %ld\n", err);
 	}
 
 	free(cmd);
