@@ -428,9 +428,14 @@ char * combine_words(size_t count, char const ** words)
 		return nullptr;
 	}
 	word[0] = '\0';
-	for (size_t i = 0; i < count; ++i) {
+
+	size_t i = 0;
+	while (true) {
 		strcat(word, words[i]);
-		strcat(word, " ");
+		if (++i < count)
+			strcat(word, " ");
+		else
+			break;
 	}
 	return word;
 }
